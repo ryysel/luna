@@ -73,7 +73,7 @@ irm https://raw.githubusercontent.com/nyakokitsu/luna/main/install.ps1 -OutFile 
 
 ## Что даёт Luna пакету
 
-- единый Lua API для LED, часов, громкости, input, сенсоров, аудио и IPC;
+- единый Lua API для LED, часов, громкости, input, сенсоров, аудио, Bluetooth и IPC;
 - `is_available()` и device topology для безопасной работы на разных моделях;
 - permissions и ограничения сети, input, IPC, команд и системных операций;
 - единый HTTP API для управления и диагностики;

@@ -200,6 +200,32 @@
       <textarea class="body">{"action":"pause"}</textarea><pre class="response">—</pre><button onclick="sendEndpoint(this)">Отправить</button>
     </div>
 
+    <h3>Bluetooth</h3>
+    <div class="endpoint" data-method="GET" data-path="/bluetooth/status">
+      <div><div class="endpoint-title"><span class="method">GET</span><code>/api/bluetooth/status</code></div><input class="path" value="/bluetooth/status"></div>
+      <textarea class="body" placeholder="Body не требуется"></textarea><pre class="response">—</pre><button onclick="sendEndpoint(this)">Отправить</button>
+    </div>
+    <div class="endpoint" data-method="PUT" data-path="/bluetooth/scan">
+      <div><div class="endpoint-title"><span class="method">PUT</span><code>/api/bluetooth/scan</code></div><input class="path" value="/bluetooth/scan"></div>
+      <textarea class="body">{"on":true}</textarea><pre class="response">—</pre><button onclick="sendEndpoint(this)">Отправить</button>
+    </div>
+    <div class="endpoint" data-method="PUT" data-path="/bluetooth/power">
+      <div><div class="endpoint-title"><span class="method">PUT</span><code>/api/bluetooth/power</code></div><input class="path" value="/bluetooth/power"></div>
+      <textarea class="body">{"on":true}</textarea><pre class="response">—</pre><button onclick="sendEndpoint(this)">Отправить</button>
+    </div>
+    <div class="endpoint" data-method="PUT" data-path="/bluetooth/pairable">
+      <div><div class="endpoint-title"><span class="method">PUT</span><code>/api/bluetooth/pairable</code></div><input class="path" value="/bluetooth/pairable"></div>
+      <textarea class="body">{"on":true}</textarea><pre class="response">—</pre><button onclick="sendEndpoint(this)">Отправить</button>
+    </div>
+    <div class="endpoint" data-method="POST" data-path="/bluetooth/pair">
+      <div><div class="endpoint-title"><span class="method">POST</span><code>/api/bluetooth/pair</code></div><input class="path" value="/bluetooth/pair"></div>
+      <textarea class="body">{"address":"01:23:45:67:89:ab"}</textarea><pre class="response">—</pre><button onclick="sendEndpoint(this)">Отправить</button>
+    </div>
+    <div class="endpoint" data-method="POST" data-path="/bluetooth/connect">
+      <div><div class="endpoint-title"><span class="method">POST</span><code>/api/bluetooth/connect</code></div><input class="path" value="/bluetooth/connect"></div>
+      <textarea class="body">{"address":"01:23:45:67:89:ab"}</textarea><pre class="response">—</pre><button onclick="sendEndpoint(this)">Отправить</button>
+    </div>
+
     <h3>Clock</h3>
     <div class="endpoint" data-method="GET" data-path="/clock">
       <div><div class="endpoint-title"><span class="method">GET</span><code>/api/clock</code></div><input class="path" value="/clock"></div>
@@ -562,6 +588,7 @@ async function runApiTest() {
     await testRequest('GET', '/sensors', undefined, 5000);
     await testRequest('GET', '/media', undefined, 5000);
     await testRequest('GET', '/volume', undefined, 5000);
+    await testRequest('GET', '/bluetooth/status', undefined, 5000);
     await testRequest('GET', '/clock', undefined, 5000);
     await testRequest('GET', '/input/devices', undefined, 5000);
     await testRequest('GET', '/microphone/devices', undefined, 5000);
@@ -586,6 +613,7 @@ async function runApiTest() {
     }
 
     testSkip('/volume/up, /volume/down, /volume/mute, /volume/unmute', 'изменяют громкость станции');
+    testSkip('/bluetooth/power, /bluetooth/pairable, /bluetooth/scan и /bluetooth/*', 'управляют радио или внешними устройствами');
     testSkip('/media/select и /media/command', 'управляют воспроизведением');
     testSkip('/input/event, /input/events, /input/gpio/* и /input/*', 'ждут физическое действие пользователя');
     testSkip('/alice/command, /alice/speech и /alice/recognize', 'ждут речь и могут передать команду штатной Алисе');

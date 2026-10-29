@@ -257,7 +257,7 @@ end
 | `volume` | громкость |
 | `audio` | проигрывание аудио |
 | `microphone` | микрофон |
-| `bluetooth` | Bluetooth |
+| `bluetooth` | статус, scan, pair/connect/disconnect/remove и доступное управление питанием Bluetooth |
 | `display` | backlight/display |
 | `sensors` | сенсоры |
 | `network` | HTTP в рамках network policy |

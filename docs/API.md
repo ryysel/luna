@@ -294,6 +294,82 @@ curl -X POST "$BASE/volume/mute"
 curl -X POST "$BASE/volume/unmute"
 ```
 
+## Bluetooth
+
+Bluetooth управляется штатным стеком станции. На Quasar-станциях Luna передаёт
+включение Bluetooth и режим сопряжения в `maind`/`BluetoothCapability`; Luna не
+создаёт отдельный аудиомаршрут и не воспроизводит A2DP через собственный ALSA.
+Конкретные операции доступны только если их поддерживает прошивка станции.
+
+Статус радио, сервиса и найденных устройств:
+
+```sh
+curl "$BASE/bluetooth/status"
+```
+
+Пример ответа:
+
+```json
+{
+  "available": true,
+  "powered": true,
+  "discovering": false,
+  "pairable": true,
+  "server_running": true,
+  "power_control_available": false,
+  "power_control_reason": "...",
+  "devices": []
+}
+```
+
+Режим обнаружения устройств:
+
+```sh
+curl -X PUT "$BASE/bluetooth/scan" \
+  -H 'Content-Type: application/json' \
+  -d '{"on":true}'
+```
+
+Отключить обнаружение:
+
+```sh
+curl -X PUT "$BASE/bluetooth/scan" \
+  -H 'Content-Type: application/json' \
+  -d '{"on":false}'
+```
+
+Включить или выключить режим сопряжения станции:
+
+```sh
+curl -X PUT "$BASE/bluetooth/pairable" \
+  -H 'Content-Type: application/json' \
+  -d '{"on":true}'
+```
+
+После успешного ответа `200 OK` станция становится доступной для нового
+сопряжения. На некоторых прошивках обновление списка Bluetooth на телефоне или
+компьютере нужно запустить вручную.
+
+Сопряжение, подключение, отключение и удаление устройства:
+
+```sh
+curl -X POST "$BASE/bluetooth/pair" \
+  -H 'Content-Type: application/json' \
+  -d '{"address":"01:23:45:67:89:ab"}'
+curl -X POST "$BASE/bluetooth/connect" \
+  -H 'Content-Type: application/json' \
+  -d '{"address":"01:23:45:67:89:ab"}'
+curl -X POST "$BASE/bluetooth/disconnect" \
+  -H 'Content-Type: application/json' \
+  -d '{"address":"01:23:45:67:89:ab"}'
+```
+
+Питание управляется через `PUT /api/bluetooth/power` с телом
+`{"on":true}` или `{"on":false}`. Если функция не поддерживается прошивкой,
+API возвращает ошибку вместо ложного успешного ответа.
+Перед вызовом Lua-пакет может проверить `alice.is_available("bluetooth.scan")`,
+`alice.is_available("bluetooth.pair")` или `alice.is_available("bluetooth.power")`.
+
 ## Собственные звуки
 
 Публичного HTTP endpoint для проигрывания файлов нет: звук запускается из Lua
