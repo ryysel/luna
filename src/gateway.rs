@@ -5,7 +5,7 @@ use axum::{
     extract::{DefaultBodyLimit, Multipart, Path as AxumPath, Query, State},
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use clap::{Parser, Subcommand};
@@ -42,6 +42,8 @@ mod providers;
 mod yam_binary;
 #[path = "dependencies.rs"]
 mod dependencies;
+#[path = "bluetooth.rs"]
+mod bluetooth;
 
 #[derive(Parser)]
 struct Args {
@@ -769,6 +771,18 @@ struct Frame {
 struct Invocation {
     #[serde(default)]
     args: Vec<String>,
+}
+#[derive(Debug, Deserialize)]
+struct BluetoothPowerRequest {
+    on: bool,
+}
+#[derive(Debug, Deserialize)]
+struct BluetoothScanRequest {
+    on: bool,
+}
+#[derive(Debug, Deserialize)]
+struct BluetoothDeviceRequest {
+    address: String,
 }
 #[derive(Debug, Deserialize)]
 struct LuaRunRequest {
@@ -1571,12 +1585,25 @@ fn detect_device(root: &Path, forced: Option<String>) -> DeviceProfile {
     if crate::audio::available() {
         features.push("audio.play.mediad".into())
     }
-    if command_exists("bluetoothctl") {
-        features.extend([
-            "bluetooth.bluez".into(),
-            "bluetooth.scan".into(),
-            "bluetooth.pair".into(),
-        ])
+    if bluetooth::available() {
+        features.extend(["bluetooth.bluez".into(), "bluetooth.status".into()]);
+        if bluetooth::scan_available() {
+            features.push("bluetooth.scan".into());
+            features.extend([
+                "bluetooth.pairable".into(),
+                "bluetooth.pair".into(),
+                "bluetooth.connect".into(),
+                "bluetooth.disconnect".into(),
+            ]);
+        }
+        if bluetooth::ctl_available() {
+            features.extend([
+                "bluetooth.remove".into(),
+            ])
+        }
+    }
+    if bluetooth::power_available() {
+        features.push("bluetooth.power".into())
     }
     if Path::new("/sys/class/backlight").exists() {
         features.push("display.backlight".into())
@@ -2941,10 +2968,6 @@ fn safe_relative(s: &str) -> Result<()> {
     };
     Ok(())
 }
-fn command_exists(name: &str) -> bool {
-    std::env::var_os("PATH")
-        .is_some_and(|paths| std::env::split_paths(&paths).any(|p| p.join(name).is_file()))
-}
 const SYSTEM_AMIXER: &str = "/system/workdir/bin/amixer";
 const STATION_ALSA_LIBS: &str = "/bkupgrade/data/bundle/ap2/libs:/system/workdir/lib";
 
@@ -2982,30 +3005,6 @@ fn amixer_output(args: &[String]) -> Result<String> {
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
-fn command_output(program: &str, args: &[String]) -> Result<String> {
-    let output = Command::new(program)
-        .args(args)
-        .output()
-        .with_context(|| format!("run {program}"))?;
-    if !output.status.success() {
-        bail!(
-            "{program} exited with {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
-        )
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
-fn valid_mac(mac: &str) -> bool {
-    mac.len() == 17
-        && mac.bytes().enumerate().all(|(i, b)| {
-            if [2, 5, 8, 11, 14].contains(&i) {
-                b == b':'
-            } else {
-                b.is_ascii_hexdigit()
-            }
-        })
-}
 fn configured_rgb_ring(settings: &LedSettings) -> bool {
     ["red", "green", "blue"]
         .iter()
@@ -3030,7 +3029,13 @@ fn lua_api_available(device: &DeviceProfile, name: &str) -> Result<bool> {
         "volume" => has_feature("audio.volume.alsa"),
         "audio" => has_feature("audio.play.mediad") || has_feature("audio.play.aplay"),
         "microphone" => has_feature("microphone.capture"),
-        "bluetooth" => has_feature("bluetooth.bluez"),
+        "bluetooth" | "bluetooth.status" => has_feature("bluetooth.bluez"),
+        "bluetooth.power" => has_feature("bluetooth.power"),
+        "bluetooth.scan" => has_feature("bluetooth.scan"),
+        "bluetooth.pair" => has_feature("bluetooth.pair"),
+        "bluetooth.connect" => has_feature("bluetooth.connect"),
+        "bluetooth.disconnect" => has_feature("bluetooth.disconnect"),
+        "bluetooth.remove" => has_feature("bluetooth.remove"),
         "display" => has_feature("display.backlight"),
         "sensors" => device
             .features
@@ -3437,40 +3442,28 @@ async fn run_plugin(app: App, id: String, event: String, cancelled: Arc<AtomicBo
             let bt = lua.create_table()?;
             bt.set(
                 "status",
-                lua.create_function(|_, ()| {
-                    command_output("bluetoothctl", &["show".into()]).map_err(mlua::Error::external)
+                lua.create_function(|lua, ()| {
+                    lua.to_value(&bluetooth::status().map_err(mlua::Error::external)?)
                 })?,
             )?;
             bt.set(
                 "power",
                 lua.create_function(|_, on: bool| {
-                    command_output(
-                        "bluetoothctl",
-                        &["power".into(), if on { "on".into() } else { "off".into() }],
-                    )
-                    .map_err(mlua::Error::external)
+                    bluetooth::power(on).map_err(mlua::Error::external)
                 })?,
             )?;
             bt.set(
                 "scan",
                 lua.create_function(|_, on: bool| {
-                    command_output(
-                        "bluetoothctl",
-                        &["scan".into(), if on { "on".into() } else { "off".into() }],
-                    )
-                    .map_err(mlua::Error::external)
+                    bluetooth::scan(on).map_err(mlua::Error::external)
                 })?,
             )?;
             for action in ["pair", "connect", "disconnect", "remove"] {
                 let a = action.to_string();
                 bt.set(
                     action,
-                    lua.create_function(move |_, mac: String| {
-                        if !valid_mac(&mac) {
-                            return Err(mlua::Error::external("invalid Bluetooth MAC"));
-                        };
-                        command_output("bluetoothctl", &[a.clone(), mac])
-                            .map_err(mlua::Error::external)
+                    lua.create_function(move |_, address: String| {
+                        bluetooth::device_action(&a, &address).map_err(mlua::Error::external)
                     })?,
                 )?;
             }
@@ -4989,6 +4982,51 @@ fn set_volume_backend(percent: u8, muted: bool) -> Result<()> {
     Ok(())
 }
 
+async fn get_bluetooth_status() -> Result<Json<serde_json::Value>, ApiError> {
+    Ok(Json(
+        task::spawn_blocking(bluetooth::status)
+            .await
+            .context("Bluetooth status task failed")??,
+    ))
+}
+
+async fn put_bluetooth_power(
+    Json(request): Json<BluetoothPowerRequest>,
+) -> Result<StatusCode, ApiError> {
+    task::spawn_blocking(move || bluetooth::power(request.on))
+        .await
+        .context("Bluetooth power task failed")??;
+    Ok(StatusCode::OK)
+}
+
+async fn put_bluetooth_pairable(
+    Json(request): Json<BluetoothPowerRequest>,
+) -> Result<StatusCode, ApiError> {
+    task::spawn_blocking(move || bluetooth::pairable(request.on))
+        .await
+        .context("Bluetooth pairing mode task failed")??;
+    Ok(StatusCode::OK)
+}
+
+async fn put_bluetooth_scan(
+    Json(request): Json<BluetoothScanRequest>,
+) -> Result<StatusCode, ApiError> {
+    task::spawn_blocking(move || bluetooth::scan(request.on))
+        .await
+        .context("Bluetooth scan task failed")??;
+    Ok(StatusCode::OK)
+}
+
+async fn post_bluetooth_action(
+    AxumPath(action): AxumPath<String>,
+    Json(request): Json<BluetoothDeviceRequest>,
+) -> Result<StatusCode, ApiError> {
+    task::spawn_blocking(move || bluetooth::device_action(&action, &request.address))
+        .await
+        .context("Bluetooth action task failed")??;
+    Ok(StatusCode::OK)
+}
+
 async fn get_volume() -> Result<Json<VolumeResponse>, ApiError> {
     Ok(Json(VolumeResponse {
         percent: amixer_volume()?,
@@ -5800,6 +5838,11 @@ pub async fn run_with_station(station: Option<StationSpec>) -> Result<()> {
             .route("/api/device", get(get_device).put(put_device))
             .route("/api/room", get(get_room).put(put_room))
             .route("/api/sensors", get(get_sensors))
+            .route("/api/bluetooth/status", get(get_bluetooth_status))
+            .route("/api/bluetooth/power", put(put_bluetooth_power))
+            .route("/api/bluetooth/pairable", put(put_bluetooth_pairable))
+            .route("/api/bluetooth/scan", put(put_bluetooth_scan))
+            .route("/api/bluetooth/:action", post(post_bluetooth_action))
             .route("/api/volume", get(get_volume).post(set_volume))
             .route("/api/volume/up", post(volume_up))
             .route("/api/volume/down", post(volume_down))
