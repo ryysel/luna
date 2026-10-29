@@ -197,6 +197,15 @@ mod tests {
             let file = fs::File::open(self.run.join("yam.lock")).unwrap();
             unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) == 0 }
         }
+        fn assert_released(&self) {
+            // Other parallel lifecycle tests fork. A CLOEXEC descriptor can
+            // briefly survive in such a child until exec, even after our drop.
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while !self.exclusive_available() {
+                assert!(std::time::Instant::now() < deadline, "lease remained held after drop/error");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
     }
     impl Drop for Fixture {
         fn drop(&mut self) {
@@ -210,7 +219,7 @@ mod tests {
         assert_eq!(prepared.root, f.root);
         assert!(!f.exclusive_available());
         drop(prepared);
-        assert!(f.exclusive_available());
+        f.assert_released();
     }
     #[test]
     fn missing_or_busy_transaction_lock_fails_closed() {
@@ -238,7 +247,7 @@ mod tests {
         fs::remove_file(&current).unwrap();
         symlink(&f.base, &current).unwrap();
         assert!(f.prepare().is_err());
-        assert!(f.exclusive_available());
+        f.assert_released();
     }
     #[test]
     fn escaping_launcher_and_descriptor_id_are_rejected() {
@@ -253,7 +262,7 @@ mod tests {
         )
         .unwrap();
         assert!(f.prepare().is_err());
-        assert!(f.exclusive_available());
+        f.assert_released();
     }
     #[test]
     fn runtime_policy_is_validated_before_execution() {
@@ -266,7 +275,7 @@ mod tests {
         ] {
             fs::write(f.root.join("plugin.toml"), invalid).unwrap();
             assert!(f.prepare().is_err());
-            assert!(f.exclusive_available());
+            f.assert_released();
         }
     }
 
@@ -289,6 +298,6 @@ mod tests {
         fs::remove_dir(f.root.join("lib")).unwrap();
         symlink(&f.base, f.root.join("lib")).unwrap();
         assert!(f.prepare().is_err());
-        assert!(f.exclusive_available());
+        f.assert_released();
     }
 }

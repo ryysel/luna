@@ -6186,7 +6186,9 @@ mod lifecycle_tests {
         let package = root.join("plugins/test-service");
         fs::create_dir_all(&package).unwrap();
         fs::write(package.join("plugin.toml"), "id='test-service'\nname='Test'\nversion='1.0.0'\nentry='run.sh'\npermissions=['exec']\n[launch]\nkind='binary'\npath='run.sh'\ninterpreter='sh'\n").unwrap();
-        fs::write(package.join("run.sh"), "if [ -f ready ] && [ ! -f cleaned ]; then touch overlap; fi\nrm -f cleaned\ntrap 'sleep 0.2; touch cleaned; exit 0' TERM\ntouch ready\nwhile :; do sleep 0.02; done\n").unwrap();
+        // Install recovery before removing the previous generation's marker:
+        // a replacement can be cancelled immediately after spawn.
+        fs::write(package.join("run.sh"), "trap 'sleep 0.2; touch cleaned; exit 0' TERM\nif [ -f ready ] && [ ! -f cleaned ]; then touch overlap; fi\nrm -f cleaned\ntouch ready\nwhile :; do sleep 0.02; done\n").unwrap();
         let mut manager = PluginManager::new(root.join("plugins"), None, None).unwrap();
         manager.enabled.insert("test-service".into());
         let mut settings = Settings::default();
