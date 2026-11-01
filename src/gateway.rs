@@ -5006,10 +5006,13 @@ fn set_volume_backend(percent: u8, muted: bool) -> Result<()> {
     if set_volume_via_maind(percent, muted).is_ok() {
         return Ok(());
     }
+    // amixer takes the level and the mute switch as separate arguments;
+    // "42% unmute" as a single argv entry is rejected with "Invalid command!".
     amixer_output(&[
         "set".into(),
         "Master".into(),
-        format!("{}% {}", percent, if muted { "mute" } else { "unmute" }),
+        format!("{percent}%"),
+        if muted { "mute" } else { "unmute" }.into(),
     ])?;
     Ok(())
 }
