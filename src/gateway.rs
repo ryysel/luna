@@ -820,7 +820,11 @@ impl Led {
             self.draw_ring(colors.clone()).await?;
             drawn = true;
         }
-        if self.topology.has_logo {
+        // A ring-sized frame does not describe the logo zone: the generic
+        // /led endpoint must not fail the whole request just because the
+        // station also has a smaller logo. Stations that only have a logo
+        // (ring_count == 0) and compact frames still reach draw_logo.
+        if self.topology.has_logo && colors.len() <= self.topology.logo_count {
             self.draw_logo(colors).await?;
             drawn = true;
         }
