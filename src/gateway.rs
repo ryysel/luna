@@ -483,6 +483,10 @@ struct ClockRequest {
     brightness: Option<u8>,
     #[serde(default)]
     segments: Option<HashMap<String, u8>>,
+    /// `{"off": true}` is how YAM plugins clear the clock; it is equivalent
+    /// to the dedicated `/clock/off` endpoint.
+    #[serde(default)]
+    off: bool,
 }
 #[derive(Debug, Deserialize)]
 struct InputQuery {
@@ -5473,6 +5477,9 @@ fn put_clock_request(
     station_clock: Option<&Arc<dyn ClockBackend>>,
     request: ClockRequest,
 ) -> Result<StatusCode, ApiError> {
+    if request.off {
+        return clock_off_request(station_clock);
+    }
     if let Some(clock) = station_clock {
         let command = if let Some(time) = request.time {
             ClockCommand::Time {
