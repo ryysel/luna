@@ -5014,11 +5014,22 @@ fn set_volume_backend(percent: u8, muted: bool) -> Result<()> {
     if set_volume_via_maind(percent, muted).is_ok() {
         return Ok(());
     }
+    // amixer takes the level and the mute switch as separate arguments;
+    // "42% unmute" as a single argv entry is rejected with "Invalid command!".
     amixer_output(&[
         "set".into(),
         "Master".into(),
-        format!("{}% {}", percent, if muted { "mute" } else { "unmute" }),
+        format!("{percent}%"),
     ])?;
+    // Not every control carries a playback switch (softvol without one is
+    // common on emulated and minimal firmware), so apply the switch best-effort.
+    if let Err(error) = amixer_output(&[
+        "set".into(),
+        "Master".into(),
+        if muted { "mute" } else { "unmute" }.into(),
+    ]) {
+        tracing::debug!(%error, "amixer mute switch unavailable");
+    }
     Ok(())
 }
 
