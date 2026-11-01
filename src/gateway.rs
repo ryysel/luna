@@ -3028,9 +3028,21 @@ fn amixer_output(args: &[String]) -> Result<String> {
     let path = find_amixer().context("amixer is not available on this station")?;
     let mut command = Command::new(&path);
     if path == Path::new(SYSTEM_AMIXER) {
-        command
-            .env("LD_LIBRARY_PATH", STATION_ALSA_LIBS)
-            .env("ALSA_CONFIG_PATH", "/etc/asound.conf");
+        // Prepend the station ALSA bundle but keep the inherited search path:
+        // some stations ship `libasound.so.2` only in their vendor directory
+        // (for example /system/vendor/quasar/libs), so replacing
+        // LD_LIBRARY_PATH makes the firmware amixer fail to load at all.
+        let inherited = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
+        let library_path = if inherited.is_empty() {
+            STATION_ALSA_LIBS.to_string()
+        } else {
+            format!("{STATION_ALSA_LIBS}:{inherited}")
+        };
+        // Do not pin ALSA_CONFIG_PATH to /etc/asound.conf: that file only
+        // defines PCMs, while the default PCM/CTL live in the system alsa.conf
+        // (which already includes /etc/asound.conf). Replacing the config makes
+        // amixer stop with "Invalid CTL default".
+        command.env("LD_LIBRARY_PATH", library_path);
     }
     let output = command
         .args(args)
