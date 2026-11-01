@@ -3030,9 +3030,11 @@ fn amixer_output(args: &[String]) -> Result<String> {
         } else {
             format!("{STATION_ALSA_LIBS}:{inherited}")
         };
-        command
-            .env("LD_LIBRARY_PATH", library_path)
-            .env("ALSA_CONFIG_PATH", "/etc/asound.conf");
+        // Do not pin ALSA_CONFIG_PATH to /etc/asound.conf: that file only
+        // defines PCMs, while the default PCM/CTL live in the system alsa.conf
+        // (which already includes /etc/asound.conf). Replacing the config makes
+        // amixer stop with "Invalid CTL default".
+        command.env("LD_LIBRARY_PATH", library_path);
     }
     let output = command
         .args(args)
